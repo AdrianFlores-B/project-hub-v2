@@ -7,6 +7,7 @@ from sqlalchemy.pool import NullPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.storage import get_storage
 
 TEST_DATABASE_URL = "postgresql+asyncpg://projecthub:projecthub@localhost:5432/projecthub_test"
 
@@ -27,10 +28,36 @@ async def _override_get_db():
         yield session
 
 
+class FakeStorage:
+    """In-memory stand-in for S3Storage, same interface."""
+
+    def __init__(self):
+        self.objects: dict[str, bytes] = {}
+
+    def save(self, key: str, data: bytes, content_type: str) -> None:
+        self.objects[key] = data
+
+    def open(self, key: str):
+        return iter([self.objects[key]])
+
+    def delete(self, key: str) -> None:
+        self.objects.pop(key, None)
+
+    def delete_prefix(self, prefix: str) -> None:
+        for key in [k for k in self.objects if k.startswith(prefix)]:
+            del self.objects[key]
+
+
 @pytest.fixture()
-def client():
+def storage():
+    return FakeStorage()
+
+
+@pytest.fixture()
+def client(storage):
     asyncio.run(_reset_schema())
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_storage] = lambda: storage
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
