@@ -57,3 +57,19 @@ class ProjectOut(BaseModel):
 class MemberOut(BaseModel):
     login: str
     role: Role
+
+
+class DocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int
+    filename: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectWithDocuments(ProjectOut):
+    documents: list[DocumentOut] = []

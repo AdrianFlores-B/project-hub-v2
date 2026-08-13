@@ -1,13 +1,23 @@
+from collections import defaultdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import ProjectAccess, get_current_user, get_owned_project, get_project_access
-from app.models import Project, ProjectMember, Role, User
-from app.schemas import MemberOut, ProjectCreate, ProjectOut, ProjectUpdate
+from app.models import Document, Project, ProjectMember, Role, User
+from app.schemas import (
+    DocumentOut,
+    MemberOut,
+    ProjectCreate,
+    ProjectOut,
+    ProjectUpdate,
+    ProjectWithDocuments,
+)
+from app.storage import S3Storage, get_storage
 
 router = APIRouter(tags=["projects"])
 
@@ -27,18 +37,37 @@ async def create_project(
     return project
 
 
-@router.get("/projects", response_model=list[ProjectOut])
+@router.get("/projects", response_model=list[ProjectWithDocuments])
 async def list_projects(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-) -> list[Project]:
-    result = await db.scalars(
-        select(Project)
-        .join(ProjectMember, ProjectMember.project_id == Project.id)
-        .where(ProjectMember.user_id == user.id)
-        .order_by(Project.id)
+) -> list[ProjectWithDocuments]:
+    projects = list(
+        await db.scalars(
+            select(Project)
+            .join(ProjectMember, ProjectMember.project_id == Project.id)
+            .where(ProjectMember.user_id == user.id)
+            .order_by(Project.id)
+        )
     )
-    return list(result)
+
+    # one extra query for all documents beats one query per project
+    documents_by_project: dict[int, list[Document]] = defaultdict(list)
+    if projects:
+        documents = await db.scalars(
+            select(Document)
+            .where(Document.project_id.in_([p.id for p in projects]))
+            .order_by(Document.id)
+        )
+        for document in documents:
+            documents_by_project[document.project_id].append(document)
+
+    result = []
+    for project in projects:
+        item = ProjectWithDocuments.model_validate(project)
+        item.documents = [DocumentOut.model_validate(d) for d in documents_by_project[project.id]]
+        result.append(item)
+    return result
 
 
 @router.get("/project/{project_id}/info", response_model=ProjectOut)
@@ -66,10 +95,14 @@ async def update_project_info(
 async def delete_project(
     project: Annotated[Project, Depends(get_owned_project)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    storage: Annotated[S3Storage, Depends(get_storage)],
 ) -> None:
-    # membership rows go away via ON DELETE CASCADE
+    # membership and document rows go away via ON DELETE CASCADE; the files
+    # in the bucket need an explicit cleanup
+    prefix = f"projects/{project.id}/"
     await db.delete(project)
     await db.commit()
+    await run_in_threadpool(storage.delete_prefix, prefix)
 
 
 @router.post(

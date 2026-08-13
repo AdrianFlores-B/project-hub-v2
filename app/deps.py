@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Project, ProjectMember, Role, User
+from app.models import Document, Project, ProjectMember, Role, User
 from app.security import decode_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -56,3 +56,17 @@ async def get_owned_project(
     if access.role != Role.OWNER:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the project owner can do this")
     return access.project
+
+
+async def get_accessible_document(
+    document_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Document:
+    document = await db.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
+    membership = await db.get(ProjectMember, (document.project_id, user.id))
+    if membership is None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this project")
+    return document
