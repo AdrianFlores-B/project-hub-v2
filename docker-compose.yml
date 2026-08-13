@@ -16,5 +16,15 @@ services:
       timeout: 5s
       retries: 5
 
+  localstack:
+    image: localstack/localstack:4
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3
+    volumes:
+      # creates the documents bucket once localstack is ready
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+
 volumes:
   pgdata:
