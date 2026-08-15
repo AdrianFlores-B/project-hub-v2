@@ -1,9 +1,9 @@
 [project]
 name = "project-hub-v2"
 version = "0.1.0"
-description = ""
+description = "REST API built with FastAPI, using PostgreSQL for relational data (users, projects, memberships, document metadata) and S3/LocalStack for file storage. Features JWT-based authentication and granular, pre-execution RBAC (Owner vs. Participant permissions)."
 authors = [
-    {name = "AdrianFlores-B"}
+    {name = "AdrianFlores-B", email = "tpg2001@outlook.com"}
 ]
 
 requires-python = ">=3.12"
