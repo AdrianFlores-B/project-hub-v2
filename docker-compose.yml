@@ -37,5 +37,23 @@ services:
       - "1025:1025" # smtp, the api sends here
       - "8025:8025" # web ui to read the captured mails
 
+  # containerized api, opt-in so it doesn't fight the dev server for the port:
+  #   docker compose --profile full up -d
+  api:
+    build: .
+    profiles: ["full"]
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://projecthub:projecthub@db:5432/projecthub
+      S3_ENDPOINT_URL: http://localstack:4566
+      SMTP_HOST: mailpit
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
 volumes:
   pgdata:
