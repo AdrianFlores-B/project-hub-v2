@@ -3,9 +3,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.concurrency import run_in_threadpool
+from pydantic import EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import mailer
+from app.config import settings
 from app.database import get_db
 from app.deps import ProjectAccess, get_current_user, get_owned_project, get_project_access
 from app.models import Document, Project, ProjectMember, Role, User
@@ -17,6 +20,7 @@ from app.schemas import (
     ProjectUpdate,
     ProjectWithDocuments,
 )
+from app.security import create_share_token, decode_share_token
 from app.storage import S3Storage, get_storage
 
 router = APIRouter(tags=["projects"])
@@ -126,3 +130,36 @@ async def invite_user(
     db.add(ProjectMember(project_id=project.id, user_id=invited.id, role=Role.PARTICIPANT))
     await db.commit()
     return MemberOut(login=invited.login, role=Role.PARTICIPANT)
+
+
+@router.get("/project/{project_id}/share")
+async def share_project(
+    project: Annotated[Project, Depends(get_owned_project)],
+    email: Annotated[EmailStr, Query(alias="with")],
+) -> dict[str, str]:
+    token = create_share_token(project.id)
+    join_url = f"{settings.app_base_url}/join?token={token}"
+    await run_in_threadpool(mailer.send_share_email, email, project.name, join_url)
+    return {"detail": f"Share link sent to {email}"}
+
+
+@router.get("/join", response_model=ProjectOut)
+async def join_project(
+    token: str,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> Project:
+    project_id = decode_share_token(token)
+    if project_id is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired share link")
+
+    project = await db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+
+    membership = await db.get(ProjectMember, (project.id, user.id))
+    if membership is None:
+        db.add(ProjectMember(project_id=project.id, user_id=user.id, role=Role.PARTICIPANT))
+        await db.commit()
+    # clicking the link twice is fine, joining is idempotent
+    return project
