@@ -15,7 +15,9 @@ done; storage-limit lambda, share-by-email and the CI/CD pipeline are next
   **participant** (can view and modify, cannot delete or invite)
 - Documents stored in S3 (emulated locally with LocalStack), metadata in
   PostgreSQL — only pdf and docx are accepted
-- 43 automated tests
+- Per-project storage limit (50 MiB by default), kept up to date by a
+  lambda that reacts to S3 object events
+- 53 automated tests
 
 ## Architecture
 
@@ -24,12 +26,24 @@ flowchart LR
     client([client]) -->|JWT| api[FastAPI]
     api --> db[(PostgreSQL)]
     api -->|files| s3[(S3 bucket)]
+    s3 -.->|object events| lambda[size-calculator lambda]
+    lambda -->|list + sum sizes| s3
+    lambda -->|report total| api
 ```
 
 Postgres stores the facts (users, projects, memberships, document
 metadata); S3 stores the file bytes under `projects/{project_id}/...`
 keys. Permissions resolve in FastAPI dependencies before any endpoint
 logic runs.
+
+The lambda never touches the database: on every S3 object event it sums
+the sizes under the project's prefix and reports the total to an internal
+API endpoint protected by a shared token
+(`/internal/projects/{id}/size`). The API stores it in the denormalized
+`projects.total_size_bytes` column that the upload limit check reads —
+uploads that would exceed `PROJECT_SIZE_LIMIT_BYTES` get a 413. The API
+has to be running for the lambda to reach it; note LocalStack does not
+persist state between restarts.
 
 ## Getting started
 
@@ -102,7 +116,7 @@ is exercised by the demo script against LocalStack.
 
 ## Roadmap
 
-- [ ] Lambda triggered by S3 events to compute per-project storage usage
+- [x] Lambda triggered by S3 events to compute per-project storage usage
       and enforce a size limit
 - [ ] Share projects by email (signed join links)
 - [ ] Coverage gate and tox
