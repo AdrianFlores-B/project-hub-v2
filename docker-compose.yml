@@ -21,10 +21,15 @@ services:
     ports:
       - "4566:4566"
     environment:
-      SERVICES: s3
+      SERVICES: s3,lambda
+      # native docker has no host.docker.internal; give it to lambda containers
+      LAMBDA_DOCKER_FLAGS: "--add-host host.docker.internal:host-gateway"
     volumes:
-      # creates the documents bucket once localstack is ready
+      # sets up the bucket, the lambda and the S3 trigger once localstack is ready
       - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+      - ./lambdas:/opt/lambdas:ro
+      # localstack runs lambdas in containers of their own
+      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   pgdata:
