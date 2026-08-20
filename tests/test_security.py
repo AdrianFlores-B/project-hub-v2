@@ -6,7 +6,9 @@ from app.config import settings
 from app.security import (
     ALGORITHM,
     create_access_token,
+    create_share_token,
     decode_access_token,
+    decode_share_token,
     hash_password,
     verify_password,
 )
@@ -45,3 +47,17 @@ def test_expired_token_is_rejected():
     result = decode_access_token(expired_token)
 
     assert result is None
+
+
+def test_share_token_roundtrip():
+    token = create_share_token(7)
+
+    project_id = decode_share_token(token)
+
+    assert project_id == 7
+
+
+def test_token_kinds_are_not_interchangeable():
+    # both are validly signed, but each decoder must reject the other kind
+    assert decode_share_token(create_access_token(1)) is None
+    assert decode_access_token(create_share_token(1)) is None
