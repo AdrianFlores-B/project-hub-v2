@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: pipx install poetry
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: poetry
+      - run: poetry install
+      - run: poetry run ruff check .
+      - run: poetry run ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: projecthub
+          POSTGRES_PASSWORD: projecthub
+          POSTGRES_DB: projecthub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U projecthub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - run: pipx install poetry
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: poetry
+      - run: poetry install
+      - name: Create test database
+        run: PGPASSWORD=projecthub psql -h localhost -U projecthub -d projecthub -c "CREATE DATABASE projecthub_test;"
+      - run: poetry run pytest --cov --cov-report=term-missing
+
+  build-and-push:
+    # only publish from main; PRs stop at lint + tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy-check:
+    # stands in for a cloud deploy (the project targets localstack, there is
+    # no real AWS account): pulls the image that was just published and boots
+    # it against a fresh database, like a deploy target would
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: projecthub
+          POSTGRES_PASSWORD: projecthub
+          POSTGRES_DB: projecthub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U projecthub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run the published image
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          TAG="sha-$(cut -c1-7 <<< "$GITHUB_SHA")"
+          docker run -d --name api --network host \
+            -e DATABASE_URL=postgresql+asyncpg://projecthub:projecthub@localhost:5432/projecthub \
+            "$IMAGE:$TAG" \
+            sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      - name: Wait for the API to answer
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health; then
+              echo; echo "API is healthy"; exit 0
+            fi
+            sleep 2
+          done
+          echo "API never became healthy"; docker logs api; exit 1
