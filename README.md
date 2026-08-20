@@ -1,11 +1,9 @@
 # Project Hub
 
+[![CI](https://github.com/AdrianFlores-B/project-hub-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/AdrianFlores-B/project-hub-v2/actions/workflows/ci.yml)
+
 Project management REST API — create projects, attach documents (pdf/docx)
 and share them with other users. Built with FastAPI, PostgreSQL and S3.
-
-**Status: in progress.** Auth, projects/permissions and document storage are
-done; storage-limit lambda, share-by-email and the CI/CD pipeline are next
-(see [roadmap](#roadmap)).
 
 ## Features
 
@@ -147,10 +145,12 @@ GitHub Actions (`.github/workflows/ci.yml`):
   database as a stand-in for a cloud deploy (the project targets LocalStack,
   so there is no real cloud environment to deploy to).
 
-## Roadmap
+## Project layout
 
-- [x] Lambda triggered by S3 events to compute per-project storage usage
-      and enforce a size limit
-- [x] Share projects by email (signed join links)
-- [x] Coverage gate and tox
-- [x] Dockerfile + CI/CD pipeline (tests, build, publish image)
+```
+app/        api code: routers, models, schemas, auth dependencies
+alembic/    database migrations
+lambdas/    the size-calculator lambda
+scripts/    localstack init, raw-sql schema, demo and verification scripts
+tests/      test suite (fakes for S3/SMTP, real postgres)
+```
