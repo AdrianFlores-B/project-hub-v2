@@ -124,10 +124,33 @@ integrations are exercised by the verification scripts
 (`scripts/verify-lambda.sh`, `scripts/verify-share.sh`) against LocalStack
 and Mailpit.
 
+## Running everything in Docker
+
+The API image can run inside the compose stack too (handy for demos):
+
+```bash
+docker compose --profile full up -d
+```
+
+This builds the image, applies migrations and serves on port 8000 — stop
+the local `uvicorn` first so the port is free.
+
+## CI/CD
+
+GitHub Actions (`.github/workflows/ci.yml`):
+
+- **pull requests**: ruff + the test suite (Python 3.12 and 3.13) against a
+  postgres service container, with the 90% coverage gate.
+- **push to main**: after lint and tests pass, the Docker image is built and
+  pushed to GitHub Container Registry (`latest` + commit sha tags), and a
+  deploy-check job pulls the published image and boots it against a fresh
+  database as a stand-in for a cloud deploy (the project targets LocalStack,
+  so there is no real cloud environment to deploy to).
+
 ## Roadmap
 
 - [x] Lambda triggered by S3 events to compute per-project storage usage
       and enforce a size limit
 - [x] Share projects by email (signed join links)
 - [x] Coverage gate and tox
-- [ ] Dockerfile + CI/CD pipeline (tests, build, publish image)
+- [x] Dockerfile + CI/CD pipeline (tests, build, publish image)
