@@ -19,5 +19,12 @@ class Settings(BaseSettings):
     internal_token: str = "dev-internal-token"
     project_size_limit_bytes: int = 50 * 1024 * 1024  # 50 MiB per project
 
+    # share-by-email (defaults point at the mailpit container)
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
+    email_from: str = "noreply@projecthub.local"
+    app_base_url: str = "http://localhost:8000"
+    share_token_expires_hours: int = 72
+
 
 settings = Settings()

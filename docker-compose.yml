@@ -31,5 +31,11 @@ services:
       # localstack runs lambdas in containers of their own
       - /var/run/docker.sock:/var/run/docker.sock
 
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "1025:1025" # smtp, the api sends here
+      - "8025:8025" # web ui to read the captured mails
+
 volumes:
   pgdata:
