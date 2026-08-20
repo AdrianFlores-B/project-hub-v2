@@ -1,0 +1,15 @@
+.git
+.venv
+.tox
+.env
+.vscode
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+tests
+scripts
+lambdas
+docker-compose.yml
+Dockerfile
