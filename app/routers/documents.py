@@ -6,9 +6,10 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.deps import ProjectAccess, get_accessible_document, get_project_access
-from app.models import Document
+from app.models import Document, Project
 from app.schemas import DocumentOut
 from app.storage import S3Storage, get_storage
 
@@ -35,6 +36,16 @@ def _validate_filename(raw: str | None) -> tuple[str, str]:
     return filename, CONTENT_TYPES[suffix]
 
 
+def _check_size_limit(current_total: int, incoming: int) -> None:
+    # current_total is the denormalized column maintained by the lambda, so it
+    # lags a moment behind reality; good enough as a soft limit
+    if current_total + incoming > settings.project_size_limit_bytes:
+        raise HTTPException(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"Project storage limit exceeded ({settings.project_size_limit_bytes} bytes)",
+        )
+
+
 @router.get("/project/{project_id}/documents", response_model=list[DocumentOut])
 async def list_documents(
     access: Annotated[ProjectAccess, Depends(get_project_access)],
@@ -59,10 +70,11 @@ async def upload_documents(
 ) -> list[Document]:
     # validate every file before storing anything, so a bad file rejects the whole batch
     validated = [_validate_filename(f.filename) for f in files]
+    contents = [await f.read() for f in files]
+    _check_size_limit(access.project.total_size_bytes, sum(len(c) for c in contents))
 
     documents = []
-    for upload, (filename, content_type) in zip(files, validated, strict=True):
-        data = await upload.read()
+    for (filename, content_type), data in zip(validated, contents, strict=True):
         document = Document(
             project_id=access.project.id,
             filename=filename,
@@ -107,6 +119,9 @@ async def update_document(
 ) -> Document:
     filename, content_type = _validate_filename(file.filename)
     data = await file.read()
+
+    project = await db.get(Project, document.project_id)
+    _check_size_limit(project.total_size_bytes - document.size_bytes, len(data))
 
     old_key = document.s3_key
     document.filename = filename

@@ -15,5 +15,9 @@ class Settings(BaseSettings):
     aws_secret_access_key: str = "test"
     aws_region: str = "us-east-1"
 
+    # shared secret for the endpoint the size-calculator lambda reports to
+    internal_token: str = "dev-internal-token"
+    project_size_limit_bytes: int = 50 * 1024 * 1024  # 50 MiB per project
+
 
 settings = Settings()
