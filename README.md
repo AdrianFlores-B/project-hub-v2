@@ -17,7 +17,11 @@ done; storage-limit lambda, share-by-email and the CI/CD pipeline are next
   PostgreSQL — only pdf and docx are accepted
 - Per-project storage limit (50 MiB by default), kept up to date by a
   lambda that reacts to S3 object events
-- 53 automated tests
+- Share projects by email: signed join links, captured locally by
+  [Mailpit](http://localhost:8025)
+- The schema can also be created without an ORM
+  (`poetry run python scripts/create_db_no_orm.py`, see `scripts/schema.sql`)
+- 65 automated tests
 
 ## Architecture
 
@@ -96,6 +100,8 @@ bash scripts/demo-flow.sh --fast   # no pauses
 | PUT    | `/project/{id}/info`         | owner or participant   |
 | DELETE | `/project/{id}`              | owner                  |
 | POST   | `/project/{id}/invite?user=` | owner                  |
+| GET    | `/project/{id}/share?with=`  | owner                  |
+| GET    | `/join?token=`               | any authenticated user |
 | GET    | `/project/{id}/documents`    | owner or participant   |
 | POST   | `/project/{id}/documents`    | owner or participant   |
 | GET    | `/document/{id}`             | owner or participant   |
@@ -118,6 +124,6 @@ is exercised by the demo script against LocalStack.
 
 - [x] Lambda triggered by S3 events to compute per-project storage usage
       and enforce a size limit
-- [ ] Share projects by email (signed join links)
+- [x] Share projects by email (signed join links)
 - [ ] Coverage gate and tox
 - [ ] Dockerfile + CI/CD pipeline (tests, build, publish image)
