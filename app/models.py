@@ -28,6 +28,9 @@ class Project(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(Text, default="")
+    # denormalized: kept up to date by the size-calculator lambda on S3 events,
+    # so the upload limit check doesn't have to sum documents on every request
+    total_size_bytes: Mapped[int] = mapped_column(BigInteger, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

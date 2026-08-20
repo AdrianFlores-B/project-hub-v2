@@ -50,6 +50,7 @@ class ProjectOut(BaseModel):
     id: int
     name: str
     description: str
+    total_size_bytes: int
     created_at: datetime
     updated_at: datetime
 
@@ -73,3 +74,7 @@ class DocumentOut(BaseModel):
 
 class ProjectWithDocuments(ProjectOut):
     documents: list[DocumentOut] = []
+
+
+class ProjectSizeUpdate(BaseModel):
+    total_size_bytes: int = Field(ge=0)
