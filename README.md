@@ -114,16 +114,20 @@ Tests need the database container running (they use a separate
 `projecthub_test` database, created automatically by the compose setup):
 
 ```bash
-poetry run pytest
+poetry run pytest                                  # plain run
+poetry run pytest --cov --cov-report=term-missing  # with coverage (min 90%)
+poetry run tox                                     # full matrix: py312 + py313 + lint
 ```
 
-S3 is replaced with an in-memory fake in the tests; the real integration
-is exercised by the demo script against LocalStack.
+S3 and SMTP are replaced with in-memory fakes in the tests; the real
+integrations are exercised by the verification scripts
+(`scripts/verify-lambda.sh`, `scripts/verify-share.sh`) against LocalStack
+and Mailpit.
 
 ## Roadmap
 
 - [x] Lambda triggered by S3 events to compute per-project storage usage
       and enforce a size limit
 - [x] Share projects by email (signed join links)
-- [ ] Coverage gate and tox
+- [x] Coverage gate and tox
 - [ ] Dockerfile + CI/CD pipeline (tests, build, publish image)
